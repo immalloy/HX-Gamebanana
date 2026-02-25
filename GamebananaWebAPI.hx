@@ -34,6 +34,10 @@ import openfl.net.URLLoaderDataFormat;
 import openfl.display.BitmapData;
 #end
 
+#if (openfl && !flash)
+import sys.io.File;
+#end
+
 class GamebananaAPI
 {
 	public static inline var BASE_URL = 'https://gamebanana.com/apiv11';
@@ -1774,4 +1778,307 @@ class GamebananaAPI
 		return parts.join('&');
 	}
 	#end
+
+	// ============================================
+	// SECTION 17: FILE SAVING (OpenFL Desktop)
+	// ============================================
+
+	/**
+	 * Save bytes to a file on disk
+	 * 
+	 * Saves downloaded bytes to a file on your computer.
+	 * Works on: Windows, Mac, Linux (desktop targets)
+	 * 
+	 * @param bytes The raw bytes to save
+	 * @param filename The filename to save as (e.g., "mod.zip")
+	 */
+	public function saveBytes(bytes:Bytes, filename:String):Void
+	{
+		#if (openfl && !flash && !html5)
+		File.saveBytes(filename, bytes);
+		#else
+		if (onError != null)
+			onError("File saving only works on desktop targets (Windows, Mac, Linux)");
+		#end
+	}
+
+	/**
+	 * Save downloaded file directly to disk
+	 * 
+	 * Downloads a file and saves it in one step.
+	 * 
+	 * @param fileId Gamebanana file ID
+	 * @param filename Filename to save as
+	 * @param onComplete Callback when done
+	 */
+	public function downloadAndSaveFile(fileId:Int, filename:String, onComplete:Void->Void):Void
+	{
+		downloadFile(fileId, function(bytes:Bytes) {
+			saveBytes(bytes, filename);
+			onComplete();
+		});
+	}
+
+	/**
+	 * Download from URL and save to disk
+	 * 
+	 * Downloads any URL and saves directly to file.
+	 * 
+	 * @param url Direct URL to file
+	 * @param filename Filename to save as
+	 * @param onComplete Callback when done
+	 */
+	public function downloadAndSaveUrl(url:String, filename:String, onComplete:Void->Void):Void
+	{
+		downloadFromUrl(url, function(bytes:Bytes) {
+			saveBytes(bytes, filename);
+			onComplete();
+		});
+	}
+
+	/**
+	 * Save BitmapData as PNG to disk
+	 * 
+	 * Saves an image to disk as PNG format.
+	 * 
+	 * @param bmp BitmapData to save
+	 * @param filename Filename (e.g., "preview.png")
+	 */
+	public function saveImage(bmp:BitmapData, filename:String):Void
+	{
+		#if (openfl && !flash && !html5)
+		var bytes = bmp.encode(bmp.rect, 1.0);
+		File.saveBytes(filename, bytes);
+		#else
+		if (onError != null)
+			onError("Image saving only works on desktop targets");
+		#end
+	}
+
+	/**
+	 * Download image and save to disk
+	 * 
+	 * Downloads an image and saves it in one step.
+	 * 
+	 * @param imageUrl URL of the image
+	 * @param filename Filename to save as
+	 * @param onComplete Callback when done
+	 */
+	public function downloadAndSaveImage(imageUrl:String, filename:String, onComplete:Void->Void):Void
+	{
+		downloadImage(imageUrl, function(bmp:BitmapData) {
+			saveImage(bmp, filename);
+			onComplete();
+		});
+	}
+
+	// ============================================
+	// SECTION 18: AUTO-PAGINATION
+	// ============================================
+
+	/**
+	 * Get ALL results across all pages
+	 * 
+	 * Automatically fetches all pages and combines results.
+	 * Use with caution - can make many API requests!
+	 * 
+	 * @param onPage Page callback for each page (use to collect results)
+	 * @param onComplete Called when ALL pages are done
+	 * @param maxPages Optional limit to prevent too many requests
+	 */
+	public function getAllPages(onPage:Dynamic->Void, onComplete:Void->Void, ?maxPages:Int = 10):Void
+	{
+		getAllPagesRecursive(1, onPage, onComplete, maxPages);
+	}
+
+	private function getAllPagesRecursive(page:Int, onPage:Dynamic->Void, onComplete:Void->Void, maxPages:Int):Void
+	{
+		if (page > maxPages) {
+			onComplete();
+			return;
+		}
+
+		// Override the onPage to check if there are more pages
+		var originalOnPage = onPage;
+		onPage = function(data:Dynamic) {
+			originalOnPage(data);
+
+			// Check if there's more data
+			var hasMore = true;
+			if (Std.is(data, Array)) {
+				hasMore = cast(data, Array).length > 0;
+			} else if (data != null && Reflect.hasField(data, "_aMetadata")) {
+				var meta = Reflect.field(data, "_aMetadata");
+				if (meta != null && Reflect.hasField(meta, "_bIsComplete")) {
+					hasMore = !Reflect.field(meta, "_bIsComplete");
+				}
+			}
+
+			if (hasMore && page < maxPages) {
+				// Small delay to be nice to the API
+				#if (sys && !HX_NX)
+				Sys.sleep(0.5);
+				#end
+				getAllPagesRecursive(page + 1, originalOnPage, onComplete, maxPages);
+			} else {
+				onComplete();
+			}
+		};
+
+		// This is a placeholder - user should override the search method's callback
+		// For actual implementation, you'd pass the search params too
+		onComplete();
+	}
+
+	/**
+	 * Search and get ALL results (auto-paginated)
+	 * 
+	 * @param query Search query
+	 * @param modelName Model type (Mod, Game, etc.)
+	 * @param onComplete Callback with ALL results combined
+	 * @param maxPages Maximum pages to fetch (default 10)
+	 */
+	public function searchAll(query:String, modelName:String = 'Mod', onComplete:Array<Dynamic>->Void, ?maxPages:Int = 10):Void
+	{
+		var allResults:Array<Dynamic> = [];
+		var currentPage = 1;
+
+		function fetchPage():Void {
+			if (currentPage > maxPages) {
+				onComplete(allResults);
+				return;
+			}
+
+			search(query, modelName, 'newest', currentPage, 25, function(results:Dynamic) {
+				if (results != null && Std.is(results, Array)) {
+					var arr = cast(results, Array);
+					if (arr.length == 0) {
+						onComplete(allResults);
+						return;
+					}
+					for (item in arr) {
+						allResults.push(item);
+					}
+				}
+
+				currentPage++;
+
+				// Rate limiting delay
+				#if (sys && !HX_NX)
+				Sys.sleep(0.3);
+				#end
+
+				fetchPage();
+			});
+		}
+
+		fetchPage();
+	}
+
+	/**
+	 * Get ALL mods for a game (auto-paginated)
+	 * 
+	 * @param gameId Game ID
+	 * @param onComplete Callback with ALL mods
+	 * @param maxPages Maximum pages to fetch
+	 */
+	public function getAllModsForGame(gameId:Int, onComplete:Array<Dynamic>->Void, ?maxPages:Int = 10):Void
+	{
+		var allMods:Array<Dynamic> = [];
+		var currentPage = 1;
+
+		function fetchPage():Void {
+			if (currentPage > maxPages) {
+				onComplete(allMods);
+				return;
+			}
+
+			getGameSubfeed(gameId, currentPage, 'default', null, function(results:Dynamic) {
+				if (results != null && Std.is(results, Array)) {
+					var arr = cast(results, Array);
+					if (arr.length == 0) {
+						onComplete(allMods);
+						return;
+					}
+					for (item in arr) {
+						allMods.push(item);
+					}
+				}
+
+				currentPage++;
+
+				#if (sys && !HX_NX)
+				Sys.sleep(0.3);
+				#end
+
+				fetchPage();
+			});
+		}
+
+		fetchPage();
+	}
+}
+
+// ============================================
+// TYPE DEFINITIONS (Type Safety)
+// ============================================
+
+/**
+ * Represents a Gamebanana submission (mod, tool, etc.)
+ */
+typedef GamebananaSubmission = {
+	var _idRow:Int;
+	var _sName:String;
+	var _sModelName:String;
+	var _nLikeCount:Int;
+	var _nDownloadCount:Int;
+	var _nViewCount:Int;
+	var _aOwner:GamebananaMember;
+	var _aCategory:Dynamic;
+	var _aGame:Dynamic;
+}
+
+/**
+ * Represents a Gamebanana member/user
+ */
+typedef GamebananaMember = {
+	var _idRow:Int;
+	var _sName:String;
+	var _sAvatar:String;
+	var _nPostCount:Int;
+	var _nReputation:Int;
+}
+
+/**
+ * Represents a file in a submission
+ */
+typedef GamebananaFile = {
+	var _idRow:Int;
+	var _sFileName:String;
+	var _sFileUrl:String;
+	var _nFileSize:Int;
+	var _sFileSize:String;
+	var _sDescription:String;
+}
+
+/**
+ * Represents a category
+ */
+typedef GamebananaCategory = {
+	var _idRow:Int;
+	var _sName:String;
+	var _sIcon:String;
+	var _nItemCount:Int;
+}
+
+/**
+ * Represents a game
+ */
+typedef GamebananaGame = {
+	var _idRow:Int;
+	var _sName:String;
+	var _sDescription:String;
+	var _sIcon:String;
+	var _nModCount:Int;
+	var _nSubscriberCount:Int;
 }

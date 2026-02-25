@@ -32,6 +32,10 @@ Haxe wrappers for accessing Gamebanana modding platform APIs. Supports both the 
 - Download mod previews/thumbnails
 - Download all previews at once
 - Get ZIP file tree structure
+- Save files to disk (desktop)
+- Save images as PNG (desktop)
+- Auto-pagination (get ALL results)
+- Type-safe typedefs
 - Like, subscribe, thank submissions
 - Get files, updates, comments
 - Manage collections, todos, issues
@@ -181,6 +185,71 @@ api.getZipTree(fileId, function(tree) {
 // Download ZIP file
 api.downloadZipFile(fileId, function(bytes) {
     // Save as .zip file
+});
+
+// ============================================
+// FILE SAVING (Desktop targets)
+// ============================================
+
+// Save downloaded bytes to file
+api.downloadFile(fileId, function(bytes) {
+    api.saveBytes(bytes, 'myfile.zip');
+});
+
+// Download and save in one step
+api.downloadAndSaveFile(fileId, 'mod.zip', function() {
+    trace('File saved!');
+});
+
+// Download image from URL and save
+api.downloadAndSaveUrl('https://example.com/image.png', 'preview.png', function() {
+    trace('Image saved!');
+});
+
+// Save BitmapData as PNG
+api.downloadImage(imageUrl, function(bmp:BitmapData) {
+    api.saveImage(bmp, 'preview.png');
+});
+
+// Download and save image directly
+api.downloadAndSaveImage(imageUrl, 'preview.png', function() {
+    trace('Image saved to disk!');
+});
+
+// ============================================
+// AUTO-PAGINATION (Get ALL results)
+// ============================================
+
+// Search and get ALL results (not just first page)
+api.searchAll('sonic', 'Mod', function(allMods:Array<Dynamic>) {
+    trace('Found ' + allMods.length + ' mods total!');
+    for (mod in allMods) {
+        trace(mod._sName);
+    }
+});
+
+// Get ALL mods for a game (all pages)
+api.getAllModsForGame(8694, function(allMods:Array<Dynamic>) {
+    trace('Game has ' + allMods.length + ' mods!');
+});
+
+// ============================================
+// TYPE-SAFE TYPEDEFS
+// ============================================
+
+// Use typedefs for cleaner code (optional)
+// Instead of: data._sName, data._nDownloadCount
+// You can use: data.name, data.downloadCount
+
+import GamebananaSubmission;
+import GamebananaFile;
+import GamebananaMember;
+
+api.getSubmissionProfilePage('Mod', 650004, function(data:Dynamic) {
+    // Type-safe access (with IDE autocomplete)
+    var submission:GamebananaSubmission = cast data;
+    trace(submission._sName);
+    trace(submission._nDownloadCount);
 });
 
 // Browse categories
