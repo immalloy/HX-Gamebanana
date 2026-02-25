@@ -27,7 +27,11 @@ Haxe wrappers for accessing Gamebanana modding platform APIs. Supports both the 
 - Search with filters and pagination
 - Browse by categories
 - Get mod/game/creator details
-- Download files and images
+- Download files (by ID or URL)
+- Download images (BitmapData/VpTexture)
+- Download mod previews/thumbnails
+- Download all previews at once
+- Get ZIP file tree structure
 - Like, subscribe, thank submissions
 - Get files, updates, comments
 - Manage collections, todos, issues
@@ -135,6 +139,11 @@ api.downloadFile(fileId, function(bytes) {
     // Save or process bytes
 });
 
+// Download file from URL
+api.downloadFromUrl('https://gamebanana.com/files/12345/file.zip', function(bytes) {
+    // bytes contains the raw file data
+});
+
 // Download image
 api.downloadImage(imageUrl, function(bmp:BitmapData) {
     var spr:FlxSprite = new FlxSprite().loadGraphic(FlxGraphic.fromBitmapData(bmp));
@@ -144,6 +153,34 @@ api.downloadImage(imageUrl, function(bmp:BitmapData) {
     spr.scale.set(factor, factor);
     spr.updateHitbox();
     spr.screenCenter();
+});
+
+// Download mod preview image (thumbnail)
+api.downloadSubmissionPreview('Mod', 650004, function(bmp:BitmapData) {
+    var thumb:FlxSprite = new FlxSprite().loadGraphic(FlxGraphic.fromBitmapData(bmp));
+    add(thumb);
+});
+
+// Download all preview images from a mod
+api.downloadAllPreviews('Mod', 650004, function(images:Array<BitmapData>) {
+    for (img in images) {
+        trace('Got image: ' + img.width + 'x' + img.height);
+    }
+});
+
+// Download first file from a mod (main download)
+api.downloadFirstFile('Mod', 650004, function(bytes) {
+    // Save bytes to file or process
+});
+
+// Get ZIP file tree (see what's inside without downloading)
+api.getZipTree(fileId, function(tree) {
+    // tree contains the archive structure
+});
+
+// Download ZIP file
+api.downloadZipFile(fileId, function(bytes) {
+    // Save as .zip file
 });
 
 // Browse categories

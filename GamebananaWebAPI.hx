@@ -1203,8 +1203,12 @@ class GamebananaAPI
 
 	/**
 	 * Download a file by ID (returns raw bytes)
-	 * @param fileId File ID
-	 * @param onComplete Callback with file bytes
+	 * 
+	 * Gets the file URL from Gamebanana's file API then downloads it.
+	 * Use this when you have a Gamebanana file ID.
+	 * 
+	 * @param fileId The file's ID from Gamebanana
+	 * @param onComplete Callback with the file bytes (can be saved or processed)
 	 */
 	public function downloadFile(fileId:Int, onComplete:#if HX_NX Bytes #else Bytes #end->Void):Void
 	{
@@ -1221,8 +1225,12 @@ class GamebananaAPI
 
 	/**
 	 * Download file from direct URL (returns raw bytes)
-	 * @param url Direct URL to the file
-	 * @param onComplete Callback with file bytes
+	 * 
+	 * Downloads any file from a direct URL. The data returned is raw bytes
+	 * that you can save to disk or process however you need.
+	 * 
+	 * @param url Direct URL to the file (must be a direct download link)
+	 * @param onComplete Callback with the file bytes
 	 */
 	public function downloadFromUrl(url:String, onComplete:#if HX_NX Bytes #else Bytes #end->Void):Void
 	{
@@ -1256,8 +1264,13 @@ class GamebananaAPI
 
 	/**
 	 * Download and create BitmapData from image URL
-	 * @param imageUrl URL of the image
-	 * @param onComplete Callback with BitmapData
+	 * 
+	 * Downloads an image and converts it to a usable format.
+	 * For OpenFL targets: returns BitmapData (can be used with FlxSprite)
+	 * For HX_NX targets: returns VpTexture (can be used with VpSprite)
+	 * 
+	 * @param imageUrl URL of the image (jpg, png, gif, webp)
+	 * @param onComplete Callback with the image as BitmapData or VpTexture
 	 */
 	public function downloadImage(imageUrl:String, onComplete:#if HX_NX VpTexture #else BitmapData #end->Void):Void
 	{
@@ -1306,9 +1319,13 @@ class GamebananaAPI
 
 	/**
 	 * Download first preview image of a submission
-	 * @param sectionSlug Section slug
-	 * @param submissionId Submission ID
-	 * @param onComplete Callback with BitmapData/VpTexture
+	 * 
+	 * Gets the first preview/thumbnail image of a mod and downloads it.
+	 * Useful for displaying mod thumbnails in your UI.
+	 * 
+	 * @param sectionSlug Section type (Mod, Tool, Game, etc.)
+	 * @param submissionId The submission's ID
+	 * @param onComplete Callback with the image as BitmapData or VpTexture
 	 */
 	public function downloadSubmissionPreview(sectionSlug:String, submissionId:Int, onComplete:#if HX_NX VpTexture #else BitmapData #end->Void):Void
 	{
@@ -1320,6 +1337,106 @@ class GamebananaAPI
 					onError("No preview images found");
 			}
 		});
+	}
+
+	/**
+	 * Download all preview images of a submission
+	 * 
+	 * Gets ALL preview images from a submission and downloads them as an array.
+	 * Returns BitmapData (OpenFL) or VpTexture (HX_NX) for each image.
+	 * 
+	 * @param sectionSlug Section type (Mod, Tool, Game, etc.)
+	 * @param submissionId The submission's ID
+	 * @param onComplete Callback with array of images
+	 */
+	public function downloadAllPreviews(sectionSlug:String, submissionId:Int, onComplete:Array<#if HX_NX VpTexture #else BitmapData #end>->Void):Void
+	{
+		getSubmissionPreviewImages(sectionSlug, submissionId, function(urls:Array<String>) {
+			var images:Array<#if HX_NX VpTexture #else BitmapData #end> = [];
+			
+			if (urls.length == 0) {
+				onComplete(images);
+				return;
+			}
+			
+			var completed = 0;
+			for (url in urls) {
+				downloadImage(url, function(img:#if HX_NX VpTexture #else BitmapData #end) {
+					images.push(img);
+					completed++;
+					if (completed >= urls.length) {
+						onComplete(images);
+					}
+				});
+			}
+		});
+	}
+
+	/**
+	 * Download the first file from a submission
+	 * 
+	 * Gets the files list from a submission and downloads the first one.
+	 * Use this for simple downloads where you just want the main file.
+	 * 
+	 * @param sectionSlug Section type (Mod, Tool, etc.)
+	 * @param submissionId The submission's ID
+	 * @param onComplete Callback with the file bytes
+	 */
+	public function downloadFirstFile(sectionSlug:String, submissionId:Int, onComplete:#if HX_NX Bytes #else Bytes #end->Void):Void
+	{
+		getSubmissionFiles(sectionSlug, submissionId, function(files:Dynamic) {
+			if (files != null && files.length > 0) {
+				var fileUrl = files[0]._sFileUrl;
+				downloadFromUrl(fileUrl, onComplete);
+			} else {
+				if (onError != null)
+					onError("No files found for submission");
+			}
+		});
+	}
+
+	/**
+	 * Get ZIP file tree structure
+	 * 
+	 * Gets the internal file structure of a ZIP file without downloading it.
+	 * Returns a tree showing all files and folders inside the archive.
+	 * 
+	 * @param fileId The file's ID from Gamebanana
+	 * @param onComplete Callback with the ZIP tree structure
+	 */
+	public function getZipTree(fileId:Int, onComplete:Dynamic->Void):Void
+	{
+		loadRequest('$BASE_URL/File/$fileId', onComplete);
+	}
+
+	/**
+	 * Download ZIP file by ID
+	 * 
+	 * Downloads the entire ZIP file from Gamebanana.
+	 * Returns raw bytes - you can save this as a .zip file on disk.
+	 * 
+	 * @param fileId The file's ID from Gamebanana
+	 * @param onComplete Callback with the ZIP file bytes
+	 */
+	public function downloadZipFile(fileId:Int, onComplete:#if HX_NX Bytes #else Bytes #end->Void):Void
+	{
+		downloadFile(fileId, onComplete);
+	}
+
+	/**
+	 * Download file with progress tracking (placeholder)
+	 * 
+	 * Note: Full progress tracking would require implementing with 
+	 * openfl.events.ProgressEvent or cpp typed functions.
+	 * For now, use downloadFile or downloadFromUrl.
+	 * 
+	 * @param fileId File ID
+	 * @param onComplete Callback with bytes
+	 * @param onProgress Progress callback (not implemented)
+	 */
+	public function downloadFileWithProgress(fileId:Int, onComplete:#if HX_NX Bytes #else Bytes #end->Void, ?onProgress:Float->Void):Void
+	{
+		downloadFile(fileId, onComplete);
 	}
 
 	// ============================================
